@@ -323,11 +323,11 @@ class SerperRM(dspy.Retrieve):
                     results int: Max number of results per page.
                     page int: Max number of pages per call.
                     tbs str: date time range, automatically set to any time by default.
-                    qdr:h str: Date time range for the past hour.
-                    qdr:d str: Date time range for the past 24 hours.
-                    qdr:w str: Date time range for past week.
-                    qdr:m str: Date time range for past month.
-                    qdr:y str: Date time range for past year.
+                        qdr:h str: Date time range for the past hour.
+                        qdr:d str: Date time range for the past 24 hours.
+                        qdr:w str: Date time range for past week.
+                        qdr:m str: Date time range for past month.
+                        qdr:y str: Date time range for past year.
         """
         super().__init__()
         self.usage = 0
@@ -507,5 +507,138 @@ class BraveRM(dspy.Retrieve):
                     )
             except Exception as e:
                 logging.error(f'Error occurs when searching query {query}: {e}')
+
+        return collected_results
+
+class SearXNGRM(dspy.Retrieve):
+    """Retrieve information from custom queries using SearXNG"""
+
+    def __init__(self, searxng_api_url=None, query_params):
+        """Args:
+            searxng_api_url  str: API url for SearXNG, if hosted in a docker-compose stack would be http://name_of_service:8080. Common service names would be http://searxng:8080 or http://localhost:8080 if not running in docker.
+            query_params (dict or list of dict): parameters in dictionary 
+                Commonly used fields are as follows (see more information in https://docs.searxng.org/dev/search_api.html):
+                    q str: query that will be used with google search
+                    categories str: categories in a comma seperated list, specifying the categories that will be searched(see https://docs.searxng.org/user/configured_engines.html#configured-engines groups for all the categories)
+                    engines str: engines in a comma seperated list, see
+                    location str: Country where the search will originate from. All locates can be found here: https://api.serper.dev/locations.
+                    autocorrect bool: Enable autocorrect on the queries while searching, if query is misspelled, will be updated.
+                    results int: Max number of results per page.
+                    page int: Max number of pages per call.
+                    tbs str: date time range, automatically set to any time by default.
+                    qdr:h str: Date time range for the past hour.
+                    qdr:d str: Date time range for the past 24 hours.
+                    qdr:w str: Date time range for past week.
+                    qdr:m str: Date time range for past month.
+                    qdr:y str: Date time range for past year.
+        """
+        super().__init__()
+        self.usage = 0
+        self.searxng_api_url = searxng_api_url
+        if not self.searxng_api_url and not os.environ.get('SEARXNG_API_URL'):
+            raise RuntimeError(
+                'You must supply a searxng_api_url param or set environment variable SEARXNG_API_URL'
+            )
+
+        elif self.searxng_api_url:
+            self.searxng_api_url = searxng_api_url
+
+        else:
+            self.searxng_api_url = os.environ['SEARXNG_API_URL'] 
+        
+
+    def serper_runner(self, query_params):
+        self.search_url = f'{self.base_url}/search'
+
+        headers = {
+            'X-API-KEY': self.serper_search_api_key,
+            'Content-Type': 'application/json',
+        }
+
+        response = requests.request(
+            'POST', self.search_url, headers=headers, json=query_params
+        )
+
+        if response == None:
+            raise RuntimeError(
+                f'Error had occured while running the search process.\n Error is {response.reason}, had failed with status code {response.status_code}'
+            )
+
+        return response.json()
+
+    def get_usage_and_reset(self):
+        usage = self.usage
+        self.usage = 0
+        return {'SerperRM': usage}
+
+    def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str]):
+        """
+        Calls the API and searches for the query passed in.
+
+
+        Args:
+            query_or_queries (Union[str, List[str]]): The query or queries to search for.
+            exclude_urls (List[str]): Dummy parameter to match the interface. Does not have any effect.
+
+        Returns:
+            a list of dictionaries, each dictionary has keys of 'description', 'snippets' (list of strings), 'title', 'url'
+        """
+        queries = (
+            [query_or_queries]
+            if isinstance(query_or_queries, str)
+            else query_or_queries
+        )
+
+        self.usage += len(queries)
+        self.results = []
+        collected_results = []
+        for query in queries:
+            if query == 'Queries:':
+                continue
+            query_params = self.query_params
+
+            # All available parameters can be found in the playground: https://serper.dev/playground
+            # Sets the json value for query to be the query that is being parsed.
+            query_params['q'] = query
+
+            # Sets the type to be search, can be images, video, places, maps etc that Google provides.
+            query_params['type'] = 'search'
+
+            self.result = self.serper_runner(query_params)
+            self.results.append(self.result)
+
+        # Array of dictionaries that will be used by Storm to create the jsons
+        collected_results = []
+
+        for result in self.results:
+            try:
+                # An array of dictionaries that contains the snippets, title of the document and url that will be used.
+                organic_results = result.get('organic')
+
+                knowledge_graph = result.get('knowledgeGraph')
+                for organic in organic_results:
+                    snippets = []
+                    snippets.append(organic.get('snippet'))
+                    if knowledge_graph != None:
+                        collected_results.append(
+                            {
+                                'snippets': snippets,
+                                'title': organic.get('title'),
+                                'url': organic.get('link'),
+                                'description': knowledge_graph.get('description'),
+                            }
+                        )
+                    else:
+                        # Common for knowledge graph to be None, set description to empty string
+                        collected_results.append(
+                            {
+                                'snippets': snippets,
+                                'title': organic.get('title'),
+                                'url': organic.get('link'),
+                                'description': '',
+                            }
+                        )
+            except:
+                continue
 
         return collected_results
