@@ -513,28 +513,28 @@ class BraveRM(dspy.Retrieve):
 class SearXNGRM(dspy.Retrieve):
     """Retrieve information from custom queries using SearXNG"""
 
-    def __init__(self, searxng_api_url=None, query_params):
+    def __init__(self, searxng_api_url=None, query_params, safe_search=1, engines='duckduckgo', language='en-US'):
         """Args:
-            searxng_api_url  str: API url for SearXNG, if hosted in a docker-compose stack would be http://name_of_service:8080. Common service names would be http://searxng:8080 or http://localhost:8080 if not running in docker.
+            searxng_api_url  str: API url for SearXNG, if hosted in a docker-compose stack would be http://name_of_service:8080. Common service names would be http://searxng:8080 in docker compose or http://localhost:8080 if not running in docker.
             query_params (dict or list of dict): parameters in dictionary 
                 Commonly used fields are as follows (see more information in https://docs.searxng.org/dev/search_api.html):
                     q str: query that will be used with google search
                     categories str: categories in a comma seperated list, specifying the categories that will be searched(see https://docs.searxng.org/user/configured_engines.html#configured-engines groups for all the categories)
-                    engines str: engines in a comma seperated list, see
-                    location str: Country where the search will originate from. All locates can be found here: https://api.serper.dev/locations.
-                    autocorrect bool: Enable autocorrect on the queries while searching, if query is misspelled, will be updated.
-                    results int: Max number of results per page.
-                    page int: Max number of pages per call.
-                    tbs str: date time range, automatically set to any time by default.
-                    qdr:h str: Date time range for the past hour.
-                    qdr:d str: Date time range for the past 24 hours.
-                    qdr:w str: Date time range for past week.
-                    qdr:m str: Date time range for past month.
-                    qdr:y str: Date time range for past year.
+                    engines str: engines in a comma seperated list, see https://docs.searxng.org/dev/engines/enginelib.html#searx.enginelib.Engine for setting up an engine, https://github.com/searxng/searxng/tree/master/searx/engines for all engines supported.
+                    language str: Language that will be used for the search. Use https://github.com/searxng/searxng/blob/master/searx/sxng_locales.py for all supported languages.
+                    pageno str: How many pages that will be used for the search.
+                    format str: Format that will be used for the search. 
+                        - json: Search will be outputted in json format
+                        - csv: Search will be outputted in csv format
+                        - rss: Search will be outputted in rss format
         """
         super().__init__()
         self.usage = 0
         self.searxng_api_url = searxng_api_url
+        self.query_params = query_params
+        self.safe_search = safe_search
+        self.engines = engines
+        self.language = language
         if not self.searxng_api_url and not os.environ.get('SEARXNG_API_URL'):
             raise RuntimeError(
                 'You must supply a searxng_api_url param or set environment variable SEARXNG_API_URL'
@@ -547,7 +547,7 @@ class SearXNGRM(dspy.Retrieve):
             self.searxng_api_url = os.environ['SEARXNG_API_URL'] 
         
 
-    def serper_runner(self, query_params):
+    def searxng_runner(self, query_params):
         self.search_url = f'{self.base_url}/search'
 
         headers = {
@@ -569,7 +569,7 @@ class SearXNGRM(dspy.Retrieve):
     def get_usage_and_reset(self):
         usage = self.usage
         self.usage = 0
-        return {'SerperRM': usage}
+        return {'SearXNGRM': usage}
 
     def forward(self, query_or_queries: Union[str, List[str]], exclude_urls: List[str]):
         """
@@ -600,11 +600,12 @@ class SearXNGRM(dspy.Retrieve):
             # All available parameters can be found in the playground: https://serper.dev/playground
             # Sets the json value for query to be the query that is being parsed.
             query_params['q'] = query
-
-            # Sets the type to be search, can be images, video, places, maps etc that Google provides.
-            query_params['type'] = 'search'
-
-            self.result = self.serper_runner(query_params)
+            query_params['format'] = 'json'
+            query_params['pageno'] = 1
+            query_params['safesearch'] = self.safe_search
+            query_params['language'] = self.language
+            query_params['engines'] = self.engines
+            self.result = self.searxng_runner(query_params)
             self.results.append(self.result)
 
         # Array of dictionaries that will be used by Storm to create the jsons

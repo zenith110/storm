@@ -22,10 +22,10 @@ from argparse import ArgumentParser
 from dspy import Example
 
 sys.path.append('./src')
-from lm import OllamaClient
-from rm import YouRM, BingSearch, BraveRM
-from storm_wiki.engine import STORMWikiRunnerArguments, STORMWikiRunner, STORMWikiLMConfigs
-from utils import load_api_key
+from knowledge_storm.lm import OllamaClient
+from knowledge_storm.rm import YouRM, BingSearch, BraveRM, SearXNGRM, SerperRM
+from knowledge_storm.storm_wiki.engine import STORMWikiRunnerArguments, STORMWikiRunner, STORMWikiLMConfigs
+from knowledge_storm.utils import load_api_key
 
 
 def main(args):
@@ -61,12 +61,21 @@ def main(args):
 
     # STORM is a knowledge curation system which consumes information from the retrieval module.
     # Currently, the information source is the Internet and we use search engine API as the retrieval module.
-    if args.retriever == 'bing':
-        rm = BingSearch(bing_search_api=os.getenv('BING_SEARCH_API_KEY'), k=engine_args.search_top_k)
-    elif args.retriever == 'you':
-        rm = YouRM(ydc_api_key=os.getenv('YDC_API_KEY'), k=engine_args.search_top_k)
-    elif args.retriever == 'brave':
-        rm = BraveRM(brave_search_api_key=os.getenv('BRAVE_API_KEY'), k=engine_args.search_top_k)
+    match args.retriever:
+        case 'bing':
+            rm = BingSearch(bing_search_api=os.getenv('BING_SEARCH_API_KEY'), k=engine_args.search_top_k)
+        case 'you':
+                rm = YouRM(ydc_api_key=os.getenv('YDC_API_KEY'), k=engine_args.search_top_k)
+        case 'brave':
+            rm = BraveRM(brave_search_api_key=os.getenv('BRAVE_API_KEY'), k=engine_args.search_top_k)
+        # case 'duckduckgo':
+        #     rm = DuckDuckGoSearchRM(k=engine_args.search_top_k, safe_search='On', region='us-en')
+        case 'serper':
+            rm = SerperRM(serper_search_api_key=os.getenv('SERPER_API_KEY'), query_params={'autocorrect': True, 'num': 10, 'page': 1})
+        case 'searxng':
+            rm = SearXNGRM(searxng_api_url=os.getenv('SEARXNG_API_URL'), query_params={}, safe_search=1, engines='duckduckgo', language='en-US')
+        case _:
+                raise ValueError(f'Invalid retriever: {args.retriever}. Choose either "bing", "you", "brave", "duckduckgo", "serper", "searxng"')
 
     runner = STORMWikiRunner(engine_args, lm_configs, rm)
 
