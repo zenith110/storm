@@ -513,7 +513,7 @@ class BraveRM(dspy.Retrieve):
 class SearXNGRM(dspy.Retrieve):
     """Retrieve information from custom queries using SearXNG"""
 
-    def __init__(self, searxng_api_url=None, query_params, safe_search=1, engines='duckduckgo', language='en-US'):
+    def __init__(self, searxng_api_url: str=None, query_params: dict = None, safe_search: int = 1, engines: str = 'duckduckgo', language: str = 'en-US'):
         """Args:
             searxng_api_url  str: API url for SearXNG, if hosted in a docker-compose stack would be http://name_of_service:8080. Common service names would be http://searxng:8080 in docker compose or http://localhost:8080 if not running in docker.
             query_params (dict or list of dict): parameters in dictionary 
@@ -535,6 +535,7 @@ class SearXNGRM(dspy.Retrieve):
         self.safe_search = safe_search
         self.engines = engines
         self.language = language
+        
         if not self.searxng_api_url and not os.environ.get('SEARXNG_API_URL'):
             raise RuntimeError(
                 'You must supply a searxng_api_url param or set environment variable SEARXNG_API_URL'
@@ -551,7 +552,6 @@ class SearXNGRM(dspy.Retrieve):
         self.search_url = f'{self.base_url}/search'
 
         headers = {
-            'X-API-KEY': self.serper_search_api_key,
             'Content-Type': 'application/json',
         }
 
@@ -590,14 +590,13 @@ class SearXNGRM(dspy.Retrieve):
         )
 
         self.usage += len(queries)
-        self.results = []
         collected_results = []
         for query in queries:
             if query == 'Queries:':
                 continue
             query_params = self.query_params
 
-            # All available parameters can be found in the playground: https://serper.dev/playground
+            # All available parameters can be found in the docs https://docs.searxng.org/dev/search_api.html
             # Sets the json value for query to be the query that is being parsed.
             query_params['q'] = query
             query_params['format'] = 'json'
@@ -611,35 +610,6 @@ class SearXNGRM(dspy.Retrieve):
         # Array of dictionaries that will be used by Storm to create the jsons
         collected_results = []
 
-        for result in self.results:
-            try:
-                # An array of dictionaries that contains the snippets, title of the document and url that will be used.
-                organic_results = result.get('organic')
-
-                knowledge_graph = result.get('knowledgeGraph')
-                for organic in organic_results:
-                    snippets = []
-                    snippets.append(organic.get('snippet'))
-                    if knowledge_graph != None:
-                        collected_results.append(
-                            {
-                                'snippets': snippets,
-                                'title': organic.get('title'),
-                                'url': organic.get('link'),
-                                'description': knowledge_graph.get('description'),
-                            }
-                        )
-                    else:
-                        # Common for knowledge graph to be None, set description to empty string
-                        collected_results.append(
-                            {
-                                'snippets': snippets,
-                                'title': organic.get('title'),
-                                'url': organic.get('link'),
-                                'description': '',
-                            }
-                        )
-            except:
-                continue
+        print(self.results.get('results'))
 
         return collected_results
